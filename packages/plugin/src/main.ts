@@ -3,9 +3,10 @@ import { VERSION } from "@petra/shared";
 import { PetraServer } from "./server";
 import { getOrCreateToken } from "./auth";
 import { registerNoteRoutes, registerDailyRoutes, registerSearchRoutes, registerTagRoutes, registerTemplateRoutes, registerLinkRoutes, registerGraphRoutes } from "./routes";
+import { PetraSettingTab } from "./settings";
 
 export default class PetraBridge extends Plugin {
-  private server: PetraServer | null = null;
+  server: PetraServer | null = null;
 
   async onload() {
     console.log(`Petra Bridge v${VERSION} loading...`);
@@ -16,6 +17,9 @@ export default class PetraBridge extends Plugin {
     // Set up auth
     const token = getOrCreateToken();
     this.server.setAuthToken(token);
+
+    // Register settings tab
+    this.addSettingTab(new PetraSettingTab(this.app, this));
 
     // Register routes (CRUD endpoints will be added in next task)
     this.registerRoutes();
