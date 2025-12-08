@@ -48,11 +48,6 @@ function normalizePath(path: string): string {
   return path;
 }
 
-/** Escape special regex characters in a string */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 /** Extract context around a link in content */
 function getContext(content: string, linkText: string, maxLen: number = 100): string {
   const idx = content.indexOf(linkText);
@@ -84,8 +79,6 @@ export function registerLinkRoutes(server: PetraServer, app: App): void {
     const backlinks: BacklinkInfo[] = [];
     const files = app.vault.getMarkdownFiles();
     const targetBasename = targetFile.basename;
-    const escapedBasename = escapeRegex(targetBasename);
-    const escapedPath = escapeRegex(targetPath.replace(".md", ""));
 
     for (const file of files) {
       if (file.path === targetPath) continue; // Skip self
@@ -94,9 +87,9 @@ export function registerLinkRoutes(server: PetraServer, app: App): void {
       const fm = parseFrontmatter(content);
 
       // Check for wikilinks [[target]] or [[target|alias]]
-      const wikiPattern = new RegExp(`\\[\\[${escapedBasename}(\\|[^\\]]+)?\\]\\]`, "gi");
+      const wikiPattern = new RegExp(`\\[\\[${targetBasename}(\\|[^\\]]+)?\\]\\]`, "gi");
       // Check for markdown links [text](path)
-      const mdPattern = new RegExp(`\\[([^\\]]+)\\]\\(${escapedPath}(\\.md)?\\)`, "gi");
+      const mdPattern = new RegExp(`\\[([^\\]]+)\\]\\(${targetPath.replace(".md", "")}(\\.md)?\\)`, "gi");
 
       const wikiMatch = content.match(wikiPattern);
       const mdMatch = content.match(mdPattern);

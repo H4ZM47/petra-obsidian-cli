@@ -14,16 +14,12 @@ export function graphCommands(parent: Command): void {
     .description("Show notes connected to this note")
     .option("-d, --depth <n>", "Traversal depth", "1")
     .option("--direction <dir>", "Direction: in, out, or both", "both")
-    .option("-l, --limit <n>", "Limit number of results", "1000")
-    .option("--timeout <ms>", "Timeout in milliseconds", "5000")
     .action(async (path, options) => {
       try {
         const client = await requireBridge();
         const params = new URLSearchParams({
           depth: options.depth,
           direction: options.direction,
-          limit: options.limit,
-          timeout: options.timeout,
         });
 
         const result = await client.get<Array<{

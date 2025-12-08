@@ -4,7 +4,6 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getAllTags, findNotesByTag } from "../lib/tags.js";
 import { PetraError } from "@petra/shared";
-import { output } from "../lib/output.js";
 
 function handleError(err: unknown): never {
   if (err instanceof PetraError) {
@@ -26,21 +25,19 @@ export function tagCommands(parent: Command): void {
       try {
         const tagCounts = getAllTags();
 
+        if (tagCounts.size === 0) {
+          console.log(chalk.dim("No tags found"));
+          return;
+        }
+
         // Convert to array and sort by count (descending)
-        const sorted = Array.from(tagCounts.entries())
-          .sort((a, b) => b[1] - a[1])
-          .map(([tag, count]) => ({ tag, count }));
+        const sorted = Array.from(tagCounts.entries()).sort(
+          (a, b) => b[1] - a[1]
+        );
 
-        output(sorted, (data) => {
-          if (data.length === 0) {
-            console.log(chalk.dim("No tags found"));
-            return;
-          }
-
-          for (const { tag: tagName, count } of data) {
-            console.log(chalk.cyan(`#${tagName}`) + chalk.dim(` (${count})`));
-          }
-        });
+        for (const [tagName, count] of sorted) {
+          console.log(chalk.cyan(`#${tagName}`) + chalk.dim(` (${count})`));
+        }
       } catch (err) {
         handleError(err);
       }
@@ -61,26 +58,24 @@ export function tagCommands(parent: Command): void {
           limit: options.limit,
         });
 
-        output(notes, (data) => {
-          if (data.length === 0) {
-            console.log(
-              chalk.dim(
-                `No notes found with tag "${searchTag}"${
-                  options.exact ? " (exact match)" : ""
-                }`
-              )
-            );
-            return;
-          }
+        if (notes.length === 0) {
+          console.log(
+            chalk.dim(
+              `No notes found with tag "${searchTag}"${
+                options.exact ? " (exact match)" : ""
+              }`
+            )
+          );
+          return;
+        }
 
-          for (const note of data) {
-            console.log(chalk.bold(note.title));
-            console.log(chalk.dim(`  ${note.path}`));
-            if (note.allTags.length > 0) {
-              console.log(chalk.cyan(`  #${note.allTags.join(" #")}`));
-            }
+        for (const note of notes) {
+          console.log(chalk.bold(note.title));
+          console.log(chalk.dim(`  ${note.path}`));
+          if (note.allTags.length > 0) {
+            console.log(chalk.cyan(`  #${note.allTags.join(" #")}`));
           }
-        });
+        }
       } catch (err) {
         handleError(err);
       }

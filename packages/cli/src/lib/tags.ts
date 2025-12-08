@@ -24,23 +24,17 @@ export interface NoteWithTags extends NoteInfo {
 function extractInlineTags(content: string): string[] {
   const tags = new Set<string>();
 
-  // Limit content size to prevent ReDoS on huge files (1MB limit)
-  const MAX_CONTENT_LENGTH = 1024 * 1024;
-  const safeContent = content.slice(0, MAX_CONTENT_LENGTH);
+  // Remove code blocks (```...```)
+  let cleaned = content.replace(/```[\s\S]*?```/g, "");
 
-  // Remove code blocks using atomic pattern with reasonable length limits
-  // Matches ``` followed by up to 10k chars (non-greedy), then ```
-  let cleaned = safeContent.replace(/```[\s\S]{0,10000}?```/g, "");
+  // Remove inline code (`...`)
+  cleaned = cleaned.replace(/`[^`]*`/g, "");
 
-  // Remove inline code with bounded quantifier (max 500 chars per code span)
-  cleaned = cleaned.replace(/`[^`]{0,500}`/g, "");
+  // Remove URLs to avoid matching fragments
+  cleaned = cleaned.replace(/https?:\/\/[^\s)]+/g, "");
 
-  // Remove URLs with bounded quantifier (max 2000 chars per URL)
-  cleaned = cleaned.replace(/https?:\/\/[^\s)]{0,2000}/g, "");
-
-  // Extract tags with strict pattern and length limit
-  // Format: #[letter][alphanumeric/dash/underscore]{0,99}
-  const tagPattern = /#([a-zA-Z][a-zA-Z0-9_/-]{0,99})\b/g;
+  // Extract tags with pattern #[a-zA-Z0-9_-]+
+  const tagPattern = /#([a-zA-Z0-9_-]+)/g;
   let match: RegExpExecArray | null;
 
   while ((match = tagPattern.exec(cleaned)) !== null) {
@@ -195,8 +189,8 @@ export function findNotesByTag(
 
   // Sort by modified date (most recent first)
   notes.sort((a, b) => {
-    const aDate = String(a.modified || a.created || "");
-    const bDate = String(b.modified || b.created || "");
+    const aDate = a.modified || a.created || "";
+    const bDate = b.modified || b.created || "";
     return bDate.localeCompare(aDate);
   });
 

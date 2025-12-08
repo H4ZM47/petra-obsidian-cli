@@ -3,13 +3,9 @@
 import { App } from "obsidian";
 import { DEFAULT_PORT } from "@petra/shared";
 import type { ApiResponse, ApiError } from "@petra/shared";
-import { timingSafeEqual } from "crypto";
 
 // Node's http is available in Obsidian desktop
 import * as http from "http";
-
-// Security: Maximum request body size (10MB) to prevent DoS via memory exhaustion
-const MAX_BODY_SIZE = 10 * 1024 * 1024;
 
 export type RouteHandler = (
   req: http.IncomingMessage,
@@ -58,24 +54,8 @@ export class PetraServer {
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server = http.createServer(async (req, res) => {
-        // Set CORS headers - restrict to localhost only for security
-        const origin = req.headers.origin;
-
-        // Security: Use strict regex matching to prevent subdomain attacks
-        // (e.g., http://localhost.evil.com should NOT be allowed)
-        const isAllowedOrigin = origin && (
-          origin === 'app://obsidian.md' ||
-          /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
-          /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
-        );
-
-        if (isAllowedOrigin) {
-          res.setHeader("Access-Control-Allow-Origin", origin);
-        } else {
-          // Default to 127.0.0.1 if no valid origin provided
-          res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
-        }
-
+        // Set CORS headers
+        res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
@@ -94,10 +74,6 @@ export class PetraServer {
       });
 
       this.server.on("error", reject);
-      // Security: Bind to 127.0.0.1 specifically (not "localhost" or "0.0.0.0")
-      // - "localhost" could resolve to IPv6 ::1 on some systems
-      // - "0.0.0.0" would expose the API to the network
-      // This ensures the API is only accessible from the local machine
       this.server.listen(DEFAULT_PORT, "127.0.0.1", () => {
         console.log(`Petra server listening on http://127.0.0.1:${DEFAULT_PORT}`);
         resolve();
@@ -150,16 +126,7 @@ export class PetraServer {
       });
 
       // Parse body for POST/PUT
-      let body: unknown;
-      try {
-        body = await this.parseBody(req);
-      } catch (err) {
-        if (err instanceof Error && err.message === "Request body too large") {
-          this.sendError(res, 413, "PAYLOAD_TOO_LARGE", "Request body exceeds 10MB limit");
-          return;
-        }
-        throw err;
-      }
+      const body = await this.parseBody(req);
 
       await route.handler(req, res, params, body);
       return;
@@ -176,33 +143,13 @@ export class PetraServer {
     if (!authHeader) return false;
 
     const [type, token] = authHeader.split(" ");
-    if (type !== "Bearer" || !token) return false;
-
-    // Security: Use constant-time comparison to prevent timing attacks
-    const expectedBuf = Buffer.from(this.authToken);
-    const actualBuf = Buffer.from(token);
-    if (expectedBuf.length !== actualBuf.length) return false;
-    return timingSafeEqual(expectedBuf, actualBuf);
+    return type === "Bearer" && token === this.authToken;
   }
 
   private async parseBody(req: http.IncomingMessage): Promise<unknown> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const chunks: Buffer[] = [];
-      let size = 0;
-
-      req.on("data", (chunk) => {
-        size += chunk.length;
-
-        // Security: Reject request if body size exceeds limit
-        if (size > MAX_BODY_SIZE) {
-          reject(new Error("Request body too large"));
-          req.destroy();
-          return;
-        }
-
-        chunks.push(chunk);
-      });
-
+      req.on("data", (chunk) => chunks.push(chunk));
       req.on("end", () => {
         const body = Buffer.concat(chunks).toString();
         if (!body) {
@@ -215,8 +162,6 @@ export class PetraServer {
           resolve(body);
         }
       });
-
-      req.on("error", reject);
     });
   }
 

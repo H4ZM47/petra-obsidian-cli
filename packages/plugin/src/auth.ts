@@ -1,14 +1,20 @@
 // packages/plugin/src/auth.ts
 
-import { randomBytes } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { CONFIG_DIR, TOKEN_FILE } from "@petra/shared";
 
-/** Generate a cryptographically secure random token */
+const TOKEN_LENGTH = 32;
+
+/** Generate a random token */
 function generateToken(): string {
-  return randomBytes(32).toString("base64url");
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let token = "";
+  for (let i = 0; i < TOKEN_LENGTH; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
 }
 
 /** Get or create auth token, storing at ~/.petra/token */
