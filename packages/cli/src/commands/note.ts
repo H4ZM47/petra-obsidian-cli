@@ -123,7 +123,7 @@ export function noteCommands(parent: Command): void {
         for (const n of notes) {
           console.log(chalk.bold(n.title));
           console.log(chalk.dim(`  ${n.path}`));
-          if (n.tags.length > 0) {
+          if (n.tags && Array.isArray(n.tags) && n.tags.length > 0) {
             console.log(chalk.cyan(`  #${n.tags.join(" #")}`));
           }
         }
@@ -163,7 +163,7 @@ export function noteCommands(parent: Command): void {
           console.log(chalk.bold(result.note.title));
           console.log(chalk.dim(`  ${result.note.path}`));
 
-          if (result.note.tags.length > 0) {
+          if (result.note.tags && Array.isArray(result.note.tags) && result.note.tags.length > 0) {
             console.log(chalk.cyan(`  #${result.note.tags.join(" #")}`));
           }
 
@@ -231,7 +231,7 @@ export function noteCommands(parent: Command): void {
         for (const link of backlinks) {
           console.log(chalk.bold(link.title));
           console.log(chalk.dim(`  ${link.path}`));
-          if (link.tags.length > 0) {
+          if (link.tags && Array.isArray(link.tags) && link.tags.length > 0) {
             console.log(chalk.cyan(`  #${link.tags.join(" #")}`));
           }
           if (link.context) {
