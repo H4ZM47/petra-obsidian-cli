@@ -1,12 +1,15 @@
 // packages/cli/src/lib/notes.ts
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, readdirSync, statSync } from "node:fs";
-import { join, dirname, basename } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, readdirSync, statSync, lstatSync } from "node:fs";
+import { join, dirname, basename, normalize, resolve } from "node:path";
 import matter from "gray-matter";
 import type { Note, NoteInfo, NoteFrontmatter, SearchResult, SearchMatch } from "@petra/shared";
-import { notFound, alreadyExists } from "@petra/shared";
+import { notFound, alreadyExists, invalidPath } from "@petra/shared";
 import { TRASH_FOLDER } from "@petra/shared";
 import { requireVault } from "./vault.js";
+
+/** Maximum directory depth to prevent stack overflow */
+const MAX_SCAN_DEPTH = 20;
 
 /** Normalize note path - add .md if needed, resolve relative paths */
 function normalizePath(notePath: string): string {
@@ -25,10 +28,31 @@ function normalizePath(notePath: string): string {
   return normalized;
 }
 
+/**
+ * Validate and sanitize a path to prevent path traversal attacks.
+ * Ensures the final path stays within the vault root.
+ */
+function safePath(notePath: string, vaultRoot: string): string {
+  // Normalize the path and remove leading ../ sequences
+  const normalized = normalize(notePath).replace(/^(\.\.[\\/])+/, '');
+
+  // Join with vault root and resolve to absolute path
+  const fullPath = resolve(vaultRoot, normalized);
+  const resolvedVaultRoot = resolve(vaultRoot);
+
+  // Verify the final path starts with vault root (path traversal check)
+  if (!fullPath.startsWith(resolvedVaultRoot + '/') && fullPath !== resolvedVaultRoot) {
+    throw invalidPath(notePath);
+  }
+
+  return fullPath;
+}
+
 /** Get full file path for a note */
 function getFullPath(notePath: string): string {
   const vault = requireVault();
-  return join(vault.path, normalizePath(notePath));
+  const normalized = normalizePath(notePath);
+  return safePath(normalized, vault.path);
 }
 
 /** Create a new note */
@@ -101,7 +125,9 @@ export function updateNote(
   if (options.content !== undefined) {
     newContent = options.content;
   } else if (options.append !== undefined) {
-    newContent = existing.content + "\n" + options.append;
+    // Only add newline separator if content doesn't already end with newline
+    const separator = existing.content.endsWith('\n') ? '' : '\n';
+    newContent = existing.content + separator + options.append;
   }
 
   const newFrontmatter: NoteFrontmatter = {
@@ -123,6 +149,18 @@ export function updateNote(
   };
 }
 
+/**
+ * Generate a unique trash path with timestamp to prevent collisions.
+ * Files with the same basename from different folders get unique names.
+ */
+function getUniqueTrashPath(originalPath: string, trashDir: string): string {
+  const base = basename(originalPath);
+  const ext = base.endsWith('.md') ? '.md' : '';
+  const name = ext ? base.slice(0, -ext.length) : base;
+  const timestamp = Date.now();
+  return join(trashDir, `${name}-${timestamp}${ext}`);
+}
+
 /** Delete a note */
 export function deleteNote(notePath: string, useTrash: boolean = false): void {
   const fullPath = getFullPath(notePath);
@@ -139,7 +177,7 @@ export function deleteNote(notePath: string, useTrash: boolean = false): void {
       mkdirSync(trashDir, { recursive: true });
     }
 
-    const trashPath = join(trashDir, basename(fullPath));
+    const trashPath = getUniqueTrashPath(fullPath, trashDir);
     renameSync(fullPath, trashPath);
   } else {
     unlinkSync(fullPath);
@@ -153,7 +191,7 @@ export function listNotes(options: {
 } = {}): NoteInfo[] {
   const vault = requireVault();
   const baseDir = options.folder
-    ? join(vault.path, options.folder)
+    ? safePath(options.folder, vault.path)
     : vault.path;
 
   if (!existsSync(baseDir)) {
@@ -162,7 +200,12 @@ export function listNotes(options: {
 
   const notes: NoteInfo[] = [];
 
-  function scanDir(dir: string, relativePath: string = ""): void {
+  function scanDir(dir: string, relativePath: string = "", depth: number = 0): void {
+    // Stop recursion if max depth reached
+    if (depth > MAX_SCAN_DEPTH) {
+      return;
+    }
+
     const entries = readdirSync(dir);
 
     for (const entry of entries) {
@@ -170,10 +213,23 @@ export function listNotes(options: {
       if (entry.startsWith(".")) continue;
 
       const fullPath = join(dir, entry);
-      const stat = statSync(fullPath);
+
+      // Use lstat to detect symlinks without following them
+      let stat;
+      try {
+        stat = lstatSync(fullPath);
+      } catch {
+        // Skip files we can't stat
+        continue;
+      }
+
+      // Skip symlinks to prevent infinite loops
+      if (stat.isSymbolicLink()) {
+        continue;
+      }
 
       if (stat.isDirectory()) {
-        scanDir(fullPath, join(relativePath, entry));
+        scanDir(fullPath, join(relativePath, entry), depth + 1);
       } else if (entry.endsWith(".md")) {
         const notePath = join(relativePath, entry);
         try {
@@ -255,7 +311,7 @@ export function searchNotes(
 ): SearchResult[] {
   const vault = requireVault();
   const baseDir = options.folder
-    ? join(vault.path, options.folder)
+    ? safePath(options.folder, vault.path)
     : vault.path;
 
   if (!existsSync(baseDir)) {
@@ -265,7 +321,12 @@ export function searchNotes(
   const results: SearchResult[] = [];
   const searchQuery = options.caseSensitive ? query : query.toLowerCase();
 
-  function scanDir(dir: string, relativePath: string = ""): void {
+  function scanDir(dir: string, relativePath: string = "", depth: number = 0): void {
+    // Stop recursion if max depth reached
+    if (depth > MAX_SCAN_DEPTH) {
+      return;
+    }
+
     const entries = readdirSync(dir);
 
     for (const entry of entries) {
@@ -273,10 +334,23 @@ export function searchNotes(
       if (entry.startsWith(".")) continue;
 
       const fullPath = join(dir, entry);
-      const stat = statSync(fullPath);
+
+      // Use lstat to detect symlinks without following them
+      let stat;
+      try {
+        stat = lstatSync(fullPath);
+      } catch {
+        // Skip files we can't stat
+        continue;
+      }
+
+      // Skip symlinks to prevent infinite loops
+      if (stat.isSymbolicLink()) {
+        continue;
+      }
 
       if (stat.isDirectory()) {
-        scanDir(fullPath, join(relativePath, entry));
+        scanDir(fullPath, join(relativePath, entry), depth + 1);
       } else if (entry.endsWith(".md")) {
         const notePath = join(relativePath, entry);
         try {

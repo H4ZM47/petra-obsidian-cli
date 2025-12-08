@@ -3,7 +3,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_PORT, CONFIG_DIR, TOKEN_FILE } from "@petra/shared";
+import { DEFAULT_PORT, CONFIG_DIR, TOKEN_FILE, PetraError } from "@petra/shared";
 import type { ApiResult } from "@petra/shared";
 
 const BRIDGE_URL = `http://localhost:${DEFAULT_PORT}`;
@@ -64,11 +64,25 @@ export function createBridgeClient(): BridgeClient {
     path: string,
     body?: unknown
   ): Promise<ApiResult<T>> {
-    const response = await fetch(`${BRIDGE_URL}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    const url = `${BRIDGE_URL}${path}`;
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (error) {
+      // Network error (connection refused, DNS failure, etc.)
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new PetraError('BRIDGE_UNAVAILABLE', `Cannot connect to Obsidian bridge: ${message}`);
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'Unknown error');
+      throw new PetraError('BRIDGE_ERROR', `Bridge returned ${response.status}: ${errorBody}`);
+    }
 
     return response.json() as Promise<ApiResult<T>>;
   }

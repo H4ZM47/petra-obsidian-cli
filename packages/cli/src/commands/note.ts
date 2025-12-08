@@ -14,6 +14,13 @@ function handleError(err: unknown): never {
   throw err;
 }
 
+/**
+ * Escape special regex characters in user input to prevent regex injection
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function noteCommands(parent: Command): void {
   const note = parent
     .command("note")
@@ -169,13 +176,14 @@ export function noteCommands(parent: Command): void {
               console.log(chalk.dim(`    ${match.text}`));
             } else {
               // Highlight the query in the match text
+              const escapedQuery = escapeRegex(query);
               const highlightedText = options.caseSensitive
                 ? match.text.replace(
-                    new RegExp(`(${query})`, "g"),
+                    new RegExp(`(${escapedQuery})`, "g"),
                     chalk.inverse("$1")
                   )
                 : match.text.replace(
-                    new RegExp(`(${query})`, "gi"),
+                    new RegExp(`(${escapedQuery})`, "gi"),
                     chalk.inverse("$1")
                   );
               console.log(chalk.dim(`    Line ${match.line}: `) + highlightedText);

@@ -69,6 +69,7 @@ export type ErrorCode =
   | "INVALID_PATH"
   | "VAULT_NOT_SET"
   | "BRIDGE_UNAVAILABLE"
+  | "BRIDGE_ERROR"
   | "AUTH_REQUIRED"
   | "AUTH_INVALID"
   | "INTERNAL_ERROR";

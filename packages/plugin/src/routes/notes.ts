@@ -1,39 +1,17 @@
 // packages/plugin/src/routes/notes.ts
 
-import { App, TFile, TFolder } from "obsidian";
+import { App, TFile, TFolder, FileSystemAdapter } from "obsidian";
 import { PetraServer } from "../server";
 import type { Note, NoteInfo, NoteFrontmatter } from "@petra/shared";
+import matter from 'gray-matter';
 
 /** Parse YAML frontmatter from content */
 function parseFrontmatter(content: string): { frontmatter: NoteFrontmatter; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) {
-    return { frontmatter: {}, body: content };
-  }
-
-  const yamlStr = match[1];
-  const body = match[2];
-
-  // Simple YAML parsing for common fields
-  const frontmatter: NoteFrontmatter = {};
-  const lines = yamlStr.split("\n");
-
-  for (const line of lines) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-
-    const key = line.slice(0, colonIdx).trim();
-    let value = line.slice(colonIdx + 1).trim();
-
-    // Handle arrays like tags: [a, b, c] or tags:\n  - a
-    if (value.startsWith("[") && value.endsWith("]")) {
-      frontmatter[key] = value.slice(1, -1).split(",").map(s => s.trim());
-    } else if (value) {
-      frontmatter[key] = value;
-    }
-  }
-
-  return { frontmatter, body };
+  const result = matter(content);
+  return {
+    frontmatter: result.data as NoteFrontmatter,
+    body: result.content
+  };
 }
 
 /** Convert TFile to NoteInfo */
@@ -69,6 +47,46 @@ function normalizePath(path: string): string {
   if (path.startsWith("/")) path = path.slice(1);
   if (!path.endsWith(".md")) path += ".md";
   return path;
+}
+
+/**
+ * Validate and sanitize user-provided path to prevent path traversal attacks.
+ * @param notePath - User-provided note path
+ * @param vaultPath - Absolute path to vault root
+ * @returns Validated normalized path safe for file operations
+ * @throws Error if path attempts traversal or escapes vault
+ */
+function validatePath(notePath: string, vaultPath: string): string {
+  // First normalize the path
+  const normalized = normalizePath(notePath);
+
+  // Check for path traversal sequences
+  if (normalized.includes('..')) {
+    throw new Error('Path traversal not allowed');
+  }
+
+  // Ensure the resolved absolute path stays within vault
+  // Note: Node's path module is available in Obsidian desktop
+  const path = require('path');
+  const fullPath = path.resolve(vaultPath, normalized);
+  const normalizedVaultPath = path.resolve(vaultPath);
+
+  // Verify resolved path starts with vault root
+  if (!fullPath.startsWith(normalizedVaultPath + path.sep) && fullPath !== normalizedVaultPath) {
+    throw new Error('Path escapes vault');
+  }
+
+  return normalized;
+}
+
+/**
+ * Get vault root path.
+ * Returns the absolute file system path to the vault root on desktop platforms.
+ * Returns empty string on mobile or if the adapter is not a FileSystemAdapter.
+ */
+function getVaultPath(app: App): string {
+  const adapter = app.vault.adapter;
+  return adapter instanceof FileSystemAdapter ? adapter.basePath : '';
 }
 
 /** Register note routes */
@@ -117,7 +135,14 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
       return;
     }
 
-    const normalizedPath = normalizePath(path);
+    let normalizedPath: string;
+    try {
+      normalizedPath = validatePath(path, getVaultPath(app));
+    } catch (error) {
+      server.sendError(res, 400, "INVALID_PATH", String(error));
+      return;
+    }
+
     const existing = app.vault.getAbstractFileByPath(normalizedPath);
 
     if (existing) {
@@ -157,7 +182,14 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
 
   // GET /notes/:path - Read note
   server.route("GET", "/notes/:path", async (req, res, params, body) => {
-    const path = normalizePath(params.path);
+    let path: string;
+    try {
+      path = validatePath(params.path, getVaultPath(app));
+    } catch (error) {
+      server.sendError(res, 400, "INVALID_PATH", String(error));
+      return;
+    }
+
     const file = app.vault.getAbstractFileByPath(path);
 
     if (!file || !(file instanceof TFile)) {
@@ -171,7 +203,14 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
 
   // PUT /notes/:path - Update note
   server.route("PUT", "/notes/:path", async (req, res, params, body) => {
-    const path = normalizePath(params.path);
+    let path: string;
+    try {
+      path = validatePath(params.path, getVaultPath(app));
+    } catch (error) {
+      server.sendError(res, 400, "INVALID_PATH", String(error));
+      return;
+    }
+
     const file = app.vault.getAbstractFileByPath(path);
 
     if (!file || !(file instanceof TFile)) {
@@ -219,7 +258,14 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
 
   // DELETE /notes/:path - Delete note
   server.route("DELETE", "/notes/:path", async (req, res, params, body) => {
-    const path = normalizePath(params.path);
+    let path: string;
+    try {
+      path = validatePath(params.path, getVaultPath(app));
+    } catch (error) {
+      server.sendError(res, 400, "INVALID_PATH", String(error));
+      return;
+    }
+
     const file = app.vault.getAbstractFileByPath(path);
 
     if (!file || !(file instanceof TFile)) {
@@ -233,7 +279,14 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
 
   // POST /notes/:path/move - Move/rename note
   server.route("POST", "/notes/:path/move", async (req, res, params, body) => {
-    const path = normalizePath(params.path);
+    let path: string;
+    try {
+      path = validatePath(params.path, getVaultPath(app));
+    } catch (error) {
+      server.sendError(res, 400, "INVALID_PATH", String(error));
+      return;
+    }
+
     const file = app.vault.getAbstractFileByPath(path);
 
     if (!file || !(file instanceof TFile)) {
@@ -247,7 +300,13 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
       return;
     }
 
-    const normalizedNewPath = normalizePath(newPath);
+    let normalizedNewPath: string;
+    try {
+      normalizedNewPath = validatePath(newPath, getVaultPath(app));
+    } catch (error) {
+      server.sendError(res, 400, "INVALID_PATH", String(error));
+      return;
+    }
 
     // Use fileManager for link-aware rename
     await app.fileManager.renameFile(file, normalizedNewPath);

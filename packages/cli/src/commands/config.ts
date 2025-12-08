@@ -2,6 +2,8 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { getConfigValue, setConfigValue, loadConfig } from "../lib/config.js";
 
 export function configCommands(parent: Command): void {
@@ -52,8 +54,6 @@ export function configCommands(parent: Command): void {
     .command("path")
     .description("Show config file path")
     .action(() => {
-      const { homedir } = require("node:os");
-      const { join } = require("node:path");
       console.log(join(homedir(), ".petra", "config.json"));
     });
 }
