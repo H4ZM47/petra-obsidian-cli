@@ -266,8 +266,8 @@ export function listNotes(options: {
 
   // Sort by modified date (most recent first)
   notes.sort((a, b) => {
-    const aDate = a.modified || a.created || "";
-    const bDate = b.modified || b.created || "";
+    const aDate = String(a.modified || a.created || "");
+    const bDate = String(b.modified || b.created || "");
     return bDate.localeCompare(aDate);
   });
 
