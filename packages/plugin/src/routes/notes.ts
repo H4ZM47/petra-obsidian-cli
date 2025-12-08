@@ -150,20 +150,14 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
       return;
     }
 
-    // Build content with frontmatter
+    // Build content with frontmatter using gray-matter for consistency
     const fm: NoteFrontmatter = {
       created: new Date().toISOString(),
       ...frontmatter,
     };
 
-    const yamlLines = Object.entries(fm).map(([k, v]) => {
-      if (Array.isArray(v)) {
-        return `${k}: [${v.join(", ")}]`;
-      }
-      return `${k}: ${v}`;
-    });
-
-    const fileContent = `---\n${yamlLines.join("\n")}\n---\n${content}`;
+    // Use gray-matter stringify for consistent round-trip serialization
+    const fileContent = matter.stringify(content, fm);
 
     // Ensure parent folder exists
     const folderPath = normalizedPath.split("/").slice(0, -1).join("/");
@@ -242,14 +236,8 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
       modified: new Date().toISOString(),
     };
 
-    const yamlLines = Object.entries(newFm).map(([k, v]) => {
-      if (Array.isArray(v)) {
-        return `${k}: [${v.join(", ")}]`;
-      }
-      return `${k}: ${v}`;
-    });
-
-    const newContent = `---\n${yamlLines.join("\n")}\n---\n${newBody}`;
+    // Use gray-matter stringify for consistent round-trip serialization
+    const newContent = matter.stringify(newBody, newFm);
     await app.vault.modify(file, newContent);
 
     const note = await fileToNote(app, file);

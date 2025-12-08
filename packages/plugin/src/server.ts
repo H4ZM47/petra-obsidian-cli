@@ -94,6 +94,10 @@ export class PetraServer {
       });
 
       this.server.on("error", reject);
+      // Security: Bind to 127.0.0.1 specifically (not "localhost" or "0.0.0.0")
+      // - "localhost" could resolve to IPv6 ::1 on some systems
+      // - "0.0.0.0" would expose the API to the network
+      // This ensures the API is only accessible from the local machine
       this.server.listen(DEFAULT_PORT, "127.0.0.1", () => {
         console.log(`Petra server listening on http://127.0.0.1:${DEFAULT_PORT}`);
         resolve();
