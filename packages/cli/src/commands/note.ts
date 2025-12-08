@@ -6,6 +6,7 @@ import { createNote, readNote, updateNote, deleteNote, listNotes, moveNote, sear
 import { PetraError } from "@petra/shared";
 import { requireBridge } from "../lib/bridge.js";
 import { output, success, error as outputError } from "../lib/output.js";
+import { getContent } from "../lib/input.js";
 
 function handleError(err: unknown): never {
   if (err instanceof PetraError) {
@@ -32,14 +33,16 @@ export function noteCommands(parent: Command): void {
     .description("Create a new note")
     .option("-t, --title <title>", "Note title")
     .option("-c, --content <content>", "Initial content")
+    .option("-f, --content-file <file>", "Read content from file")
     .option("--tags <tags>", "Comma-separated tags")
-    .action((path, options) => {
+    .action(async (path, options) => {
       try {
         const frontmatter: Record<string, unknown> = {};
         if (options.title) frontmatter.title = options.title;
         if (options.tags) frontmatter.tags = options.tags.split(",").map((t: string) => t.trim());
 
-        const n = createNote(path, options.content || "", frontmatter);
+        const content = await getContent(options.content, options.contentFile);
+        const n = createNote(path, content, frontmatter);
         success(`Created note: ${n.path}`);
       } catch (err) {
         handleError(err);
@@ -64,12 +67,23 @@ export function noteCommands(parent: Command): void {
     .command("update <path>")
     .description("Update a note")
     .option("-c, --content <content>", "New content (replaces existing)")
+    .option("-f, --content-file <file>", "Read content from file")
     .option("-a, --append <content>", "Append content")
-    .action((path, options) => {
+    .option("-A, --append-file <file>", "Append content from file")
+    .action(async (path, options) => {
       try {
+        // Get content for replace or append
+        const content = options.content !== undefined || options.contentFile
+          ? await getContent(options.content, options.contentFile)
+          : undefined;
+
+        const appendContent = options.append !== undefined || options.appendFile
+          ? await getContent(options.append, options.appendFile)
+          : undefined;
+
         const n = updateNote(path, {
-          content: options.content,
-          append: options.append,
+          content,
+          append: appendContent,
         });
         success(`Updated note: ${n.path}`);
       } catch (err) {
