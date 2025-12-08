@@ -31,16 +31,22 @@ function normalizePath(notePath: string): string {
 /**
  * Validate and sanitize a path to prevent path traversal attacks.
  * Ensures the final path stays within the vault root.
+ * Rejects any path containing '..' to prevent traversal attempts.
  */
 function safePath(notePath: string, vaultRoot: string): string {
-  // Normalize the path and remove leading ../ sequences
-  const normalized = normalize(notePath).replace(/^(\.\.[\\/])+/, '');
+  // Normalize the path first
+  const normalized = normalize(notePath);
+
+  // Reject any path containing '..' (path traversal attempt)
+  if (normalized.includes('..')) {
+    throw invalidPath(notePath);
+  }
 
   // Join with vault root and resolve to absolute path
   const fullPath = resolve(vaultRoot, normalized);
   const resolvedVaultRoot = resolve(vaultRoot);
 
-  // Verify the final path starts with vault root (path traversal check)
+  // Verify the final path starts with vault root (defense in depth)
   if (!fullPath.startsWith(resolvedVaultRoot + '/') && fullPath !== resolvedVaultRoot) {
     throw invalidPath(notePath);
   }

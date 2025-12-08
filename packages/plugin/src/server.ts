@@ -60,14 +60,16 @@ export class PetraServer {
       this.server = http.createServer(async (req, res) => {
         // Set CORS headers - restrict to localhost only for security
         const origin = req.headers.origin;
-        const allowedOrigins = [
-          'http://localhost',
-          'http://127.0.0.1',
-          'app://obsidian.md'
-        ];
 
-        // Check if origin matches allowed patterns (localhost/127.0.0.1 with any port)
-        if (origin && (allowedOrigins.some(allowed => origin.startsWith(allowed)) || origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/))) {
+        // Security: Use strict regex matching to prevent subdomain attacks
+        // (e.g., http://localhost.evil.com should NOT be allowed)
+        const isAllowedOrigin = origin && (
+          origin === 'app://obsidian.md' ||
+          /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
+          /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
+        );
+
+        if (isAllowedOrigin) {
           res.setHeader("Access-Control-Allow-Origin", origin);
         } else {
           // Default to 127.0.0.1 if no valid origin provided
