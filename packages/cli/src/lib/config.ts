@@ -27,7 +27,11 @@ export function loadConfig(): PetraConfig {
   try {
     const content = readFileSync(CONFIG_PATH, "utf-8");
     return JSON.parse(content);
-  } catch {
+  } catch (error) {
+    // Log warning instead of silently failing
+    console.warn(`Warning: Could not parse config file at ${CONFIG_PATH}`);
+    console.warn(`  Error: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`  Using default configuration. Fix or delete the config file.`);
     return {};
   }
 }

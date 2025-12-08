@@ -5,6 +5,8 @@ import chalk from "chalk";
 import { createNote, readNote, updateNote, deleteNote, listNotes, moveNote, searchNotes } from "../lib/notes.js";
 import { PetraError } from "@petra/shared";
 import { requireBridge } from "../lib/bridge.js";
+import { output, success, error as outputError } from "../lib/output.js";
+import { getContent } from "../lib/input.js";
 
 function handleError(err: unknown): never {
   if (err instanceof PetraError) {
@@ -12,6 +14,13 @@ function handleError(err: unknown): never {
     process.exit(1);
   }
   throw err;
+}
+
+/**
+ * Escape special regex characters in user input to prevent regex injection
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function noteCommands(parent: Command): void {
@@ -24,15 +33,17 @@ export function noteCommands(parent: Command): void {
     .description("Create a new note")
     .option("-t, --title <title>", "Note title")
     .option("-c, --content <content>", "Initial content")
+    .option("-f, --content-file <file>", "Read content from file")
     .option("--tags <tags>", "Comma-separated tags")
-    .action((path, options) => {
+    .action(async (path, options) => {
       try {
         const frontmatter: Record<string, unknown> = {};
         if (options.title) frontmatter.title = options.title;
         if (options.tags) frontmatter.tags = options.tags.split(",").map((t: string) => t.trim());
 
-        const n = createNote(path, options.content || "", frontmatter);
-        console.log(chalk.green(`Created note: ${n.path}`));
+        const content = await getContent(options.content, options.contentFile);
+        const n = createNote(path, content, frontmatter);
+        success(`Created note: ${n.path}`);
       } catch (err) {
         handleError(err);
       }
@@ -56,14 +67,25 @@ export function noteCommands(parent: Command): void {
     .command("update <path>")
     .description("Update a note")
     .option("-c, --content <content>", "New content (replaces existing)")
+    .option("-f, --content-file <file>", "Read content from file")
     .option("-a, --append <content>", "Append content")
-    .action((path, options) => {
+    .option("-A, --append-file <file>", "Append content from file")
+    .action(async (path, options) => {
       try {
+        // Get content for replace or append
+        const content = options.content !== undefined || options.contentFile
+          ? await getContent(options.content, options.contentFile)
+          : undefined;
+
+        const appendContent = options.append !== undefined || options.appendFile
+          ? await getContent(options.append, options.appendFile)
+          : undefined;
+
         const n = updateNote(path, {
-          content: options.content,
-          append: options.append,
+          content,
+          append: appendContent,
         });
-        console.log(chalk.green(`Updated note: ${n.path}`));
+        success(`Updated note: ${n.path}`);
       } catch (err) {
         handleError(err);
       }
@@ -76,7 +98,7 @@ export function noteCommands(parent: Command): void {
     .action((path, options) => {
       try {
         deleteNote(path, options.trash);
-        console.log(chalk.green(`Deleted note: ${path}`));
+        success(`Deleted note: ${path}`);
       } catch (err) {
         handleError(err);
       }
@@ -90,7 +112,7 @@ export function noteCommands(parent: Command): void {
       try {
         console.log(chalk.yellow("Warning: Links to this note will not be updated. Use Obsidian with petra-bridge for link-aware moves."));
         const n = moveNote(from, to, options.force);
-        console.log(chalk.green(`Moved note: ${from} -> ${n.path}`));
+        success(`Moved note: ${from} -> ${n.path}`);
       } catch (err) {
         handleError(err);
       }
@@ -108,18 +130,20 @@ export function noteCommands(parent: Command): void {
           limit: options.limit,
         });
 
-        if (notes.length === 0) {
-          console.log(chalk.dim("No notes found"));
-          return;
-        }
-
-        for (const n of notes) {
-          console.log(chalk.bold(n.title));
-          console.log(chalk.dim(`  ${n.path}`));
-          if (n.tags.length > 0) {
-            console.log(chalk.cyan(`  #${n.tags.join(" #")}`));
+        output(notes, (data) => {
+          if (data.length === 0) {
+            console.log(chalk.dim("No notes found"));
+            return;
           }
-        }
+
+          for (const n of data) {
+            console.log(chalk.bold(n.title));
+            console.log(chalk.dim(`  ${n.path}`));
+            if (n.tags && Array.isArray(n.tags) && n.tags.length > 0) {
+              console.log(chalk.cyan(`  #${n.tags.join(" #")}`));
+            }
+          }
+        });
       } catch (err) {
         handleError(err);
       }
@@ -131,7 +155,6 @@ export function noteCommands(parent: Command): void {
     .option("-f, --folder <path>", "Search within specific folder")
     .option("-l, --limit <n>", "Limit results (default: 20)", parseInt, 20)
     .option("-i, --case-sensitive", "Case-sensitive search")
-    .option("--json", "Output as JSON")
     .action((query, options) => {
       try {
         const results = searchNotes(query, {
@@ -140,54 +163,52 @@ export function noteCommands(parent: Command): void {
           caseSensitive: options.caseSensitive,
         });
 
-        if (options.json) {
-          console.log(JSON.stringify(results, null, 2));
-          return;
-        }
-
-        if (results.length === 0) {
-          console.log(chalk.dim(`No results found for "${query}"`));
-          return;
-        }
-
-        console.log(chalk.green(`Found ${results.length} note(s) matching "${query}":\n`));
-
-        for (const result of results) {
-          console.log(chalk.bold(result.note.title));
-          console.log(chalk.dim(`  ${result.note.path}`));
-
-          if (result.note.tags.length > 0) {
-            console.log(chalk.cyan(`  #${result.note.tags.join(" #")}`));
+        output(results, (data) => {
+          if (data.length === 0) {
+            console.log(chalk.dim(`No results found for "${query}"`));
+            return;
           }
 
-          console.log(chalk.yellow(`  ${result.matches.length} match(es):`));
+          console.log(chalk.green(`Found ${data.length} note(s) matching "${query}":\n`));
 
-          // Show first 5 matches
-          const displayMatches = result.matches.slice(0, 5);
-          for (const match of displayMatches) {
-            if (match.line === 0) {
-              console.log(chalk.dim(`    ${match.text}`));
-            } else {
-              // Highlight the query in the match text
-              const highlightedText = options.caseSensitive
-                ? match.text.replace(
-                    new RegExp(`(${query})`, "g"),
-                    chalk.inverse("$1")
-                  )
-                : match.text.replace(
-                    new RegExp(`(${query})`, "gi"),
-                    chalk.inverse("$1")
-                  );
-              console.log(chalk.dim(`    Line ${match.line}: `) + highlightedText);
+          for (const result of data) {
+            console.log(chalk.bold(result.note.title));
+            console.log(chalk.dim(`  ${result.note.path}`));
+
+            if (result.note.tags && Array.isArray(result.note.tags) && result.note.tags.length > 0) {
+              console.log(chalk.cyan(`  #${result.note.tags.join(" #")}`));
             }
-          }
 
-          if (result.matches.length > 5) {
-            console.log(chalk.dim(`    ... and ${result.matches.length - 5} more match(es)`));
-          }
+            console.log(chalk.yellow(`  ${result.matches.length} match(es):`));
 
-          console.log(); // Empty line between results
-        }
+            // Show first 5 matches
+            const displayMatches = result.matches.slice(0, 5);
+            for (const match of displayMatches) {
+              if (match.line === 0) {
+                console.log(chalk.dim(`    ${match.text}`));
+              } else {
+                // Highlight the query in the match text
+                const escapedQuery = escapeRegex(query);
+                const highlightedText = options.caseSensitive
+                  ? match.text.replace(
+                      new RegExp(`(${escapedQuery})`, "g"),
+                      chalk.inverse("$1")
+                    )
+                  : match.text.replace(
+                      new RegExp(`(${escapedQuery})`, "gi"),
+                      chalk.inverse("$1")
+                    );
+                console.log(chalk.dim(`    Line ${match.line}: `) + highlightedText);
+              }
+            }
+
+            if (result.matches.length > 5) {
+              console.log(chalk.dim(`    ... and ${result.matches.length - 5} more match(es)`));
+            }
+
+            console.log(); // Empty line between results
+          }
+        });
       } catch (err) {
         handleError(err);
       }
@@ -223,7 +244,7 @@ export function noteCommands(parent: Command): void {
         for (const link of backlinks) {
           console.log(chalk.bold(link.title));
           console.log(chalk.dim(`  ${link.path}`));
-          if (link.tags.length > 0) {
+          if (link.tags && Array.isArray(link.tags) && link.tags.length > 0) {
             console.log(chalk.cyan(`  #${link.tags.join(" #")}`));
           }
           if (link.context) {

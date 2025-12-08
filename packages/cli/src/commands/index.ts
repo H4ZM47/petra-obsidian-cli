@@ -8,6 +8,7 @@ import { tagCommands } from "./tag.js";
 import { dailyCommands } from "./daily.js";
 import { templateCommands } from "./template.js";
 import { graphCommands } from "./graph.js";
+import { bridgeCommands } from "./bridge.js";
 
 export function registerCommands(program: Command): void {
   noteCommands(program);
@@ -17,4 +18,5 @@ export function registerCommands(program: Command): void {
   tagCommands(program);
   templateCommands(program);
   graphCommands(program);
+  bridgeCommands(program);
 }

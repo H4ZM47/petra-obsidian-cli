@@ -12,7 +12,8 @@
     "test": "echo \"No tests yet\""
   },
   "dependencies": {
-    "@petra/shared": "workspace:*"
+    "@petra/shared": "workspace:*",
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
