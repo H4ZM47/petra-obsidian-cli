@@ -2,7 +2,7 @@ import { Plugin, Notice } from "obsidian";
 import { VERSION } from "@petra/shared";
 import { PetraServer } from "./server";
 import { getOrCreateToken } from "./auth";
-import { registerNoteRoutes, registerDailyRoutes, registerSearchRoutes, registerTagRoutes } from "./routes";
+import { registerNoteRoutes, registerDailyRoutes, registerSearchRoutes, registerTagRoutes, registerTemplateRoutes, registerLinkRoutes, registerGraphRoutes } from "./routes";
 
 export default class PetraBridge extends Plugin {
   private server: PetraServer | null = null;
@@ -65,5 +65,14 @@ export default class PetraBridge extends Plugin {
 
     // Register tag routes
     registerTagRoutes(this.server, this.app);
+
+    // Register template routes
+    registerTemplateRoutes(this.server, this.app);
+
+    // Register link routes
+    registerLinkRoutes(this.server, this.app);
+
+    // Register graph routes
+    registerGraphRoutes(this.server, this.app);
   }
 }

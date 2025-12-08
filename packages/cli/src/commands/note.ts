@@ -4,6 +4,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { createNote, readNote, updateNote, deleteNote, listNotes, moveNote, searchNotes } from "../lib/notes.js";
 import { PetraError } from "@petra/shared";
+import { requireBridge } from "../lib/bridge.js";
 
 function handleError(err: unknown): never {
   if (err instanceof PetraError) {
@@ -189,6 +190,95 @@ export function noteCommands(parent: Command): void {
         }
       } catch (err) {
         handleError(err);
+      }
+    });
+
+  note
+    .command("backlinks <path>")
+    .description("Show notes linking to this note (requires bridge)")
+    .action(async (path) => {
+      try {
+        const client = await requireBridge();
+        const result = await client.get<Array<{
+          path: string;
+          title: string;
+          tags: string[];
+          context: string;
+        }>>(`/notes/${encodeURIComponent(path)}/backlinks`);
+
+        if (!result.ok) {
+          console.error(chalk.red(result.error.message));
+          process.exit(1);
+        }
+
+        const backlinks = result.data;
+
+        if (backlinks.length === 0) {
+          console.log(chalk.dim("No backlinks found"));
+          return;
+        }
+
+        console.log(chalk.green(`${backlinks.length} note(s) link to "${path}":\n`));
+
+        for (const link of backlinks) {
+          console.log(chalk.bold(link.title));
+          console.log(chalk.dim(`  ${link.path}`));
+          if (link.tags.length > 0) {
+            console.log(chalk.cyan(`  #${link.tags.join(" #")}`));
+          }
+          if (link.context) {
+            console.log(chalk.dim(`  "${link.context}"`));
+          }
+          console.log();
+        }
+      } catch (err) {
+        if (err instanceof Error) {
+          console.error(chalk.red(err.message));
+        }
+        process.exit(1);
+      }
+    });
+
+  note
+    .command("outlinks <path>")
+    .description("Show notes this note links to (requires bridge)")
+    .action(async (path) => {
+      try {
+        const client = await requireBridge();
+        const result = await client.get<Array<{
+          path: string;
+          title: string;
+          exists: boolean;
+          context: string;
+        }>>(`/notes/${encodeURIComponent(path)}/outlinks`);
+
+        if (!result.ok) {
+          console.error(chalk.red(result.error.message));
+          process.exit(1);
+        }
+
+        const outlinks = result.data;
+
+        if (outlinks.length === 0) {
+          console.log(chalk.dim("No outlinks found"));
+          return;
+        }
+
+        console.log(chalk.green(`"${path}" links to ${outlinks.length} note(s):\n`));
+
+        for (const link of outlinks) {
+          const status = link.exists ? chalk.green("✓") : chalk.red("✗");
+          console.log(`${status} ${chalk.bold(link.title)}`);
+          console.log(chalk.dim(`    ${link.path}`));
+          if (link.context) {
+            console.log(chalk.dim(`    "${link.context}"`));
+          }
+        }
+      } catch (err) {
+        if (err instanceof Error) {
+          console.error(chalk.red(err.message));
+        }
+        process.exit(1);
       }
     });
 }
