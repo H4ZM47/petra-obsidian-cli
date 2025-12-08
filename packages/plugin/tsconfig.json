@@ -5,6 +5,5 @@
     "outDir": "dist",
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src"],
-  "references": [{ "path": "../shared" }]
+  "include": ["src"]
 }

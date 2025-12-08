@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import matter from "gray-matter";
-import type { Note, NoteInfo, NoteFrontmatter } from "@petra/shared";
+import type { Note, NoteInfo, NoteFrontmatter, SearchResult, SearchMatch } from "@petra/shared";
 import { notFound, alreadyExists } from "@petra/shared";
 import { TRASH_FOLDER } from "@petra/shared";
 import { requireVault } from "./vault.js";
@@ -214,4 +214,141 @@ export function listNotes(options: {
   }
 
   return notes;
+}
+
+/** Move/rename a note */
+export function moveNote(fromPath: string, toPath: string, force: boolean = false): Note {
+  const fullFromPath = getFullPath(fromPath);
+  const fullToPath = getFullPath(toPath);
+
+  // Check source exists
+  if (!existsSync(fullFromPath)) {
+    throw notFound(`Note at ${fromPath}`);
+  }
+
+  // Check destination doesn't exist (unless force)
+  if (existsSync(fullToPath) && !force) {
+    throw alreadyExists(`Note at ${toPath}`);
+  }
+
+  // Ensure destination directory exists
+  const destDir = dirname(fullToPath);
+  if (!existsSync(destDir)) {
+    mkdirSync(destDir, { recursive: true });
+  }
+
+  // Move the file
+  renameSync(fullFromPath, fullToPath);
+
+  // Read and return the note from its new location
+  return readNote(toPath);
+}
+
+/** Search notes in vault */
+export function searchNotes(
+  query: string,
+  options: {
+    folder?: string;
+    limit?: number;
+    caseSensitive?: boolean;
+  } = {}
+): SearchResult[] {
+  const vault = requireVault();
+  const baseDir = options.folder
+    ? join(vault.path, options.folder)
+    : vault.path;
+
+  if (!existsSync(baseDir)) {
+    return [];
+  }
+
+  const results: SearchResult[] = [];
+  const searchQuery = options.caseSensitive ? query : query.toLowerCase();
+
+  function scanDir(dir: string, relativePath: string = ""): void {
+    const entries = readdirSync(dir);
+
+    for (const entry of entries) {
+      // Skip hidden files and .obsidian folder
+      if (entry.startsWith(".")) continue;
+
+      const fullPath = join(dir, entry);
+      const stat = statSync(fullPath);
+
+      if (stat.isDirectory()) {
+        scanDir(fullPath, join(relativePath, entry));
+      } else if (entry.endsWith(".md")) {
+        const notePath = join(relativePath, entry);
+        try {
+          const raw = readFileSync(fullPath, "utf-8");
+          const { content, data } = matter(raw);
+          const fm = data as NoteFrontmatter;
+
+          const matches: SearchMatch[] = [];
+
+          // Search in content
+          const contentLines = content.split("\n");
+          for (let i = 0; i < contentLines.length; i++) {
+            const line = contentLines[i];
+            const searchLine = options.caseSensitive ? line : line.toLowerCase();
+
+            if (searchLine.includes(searchQuery)) {
+              matches.push({
+                line: i + 1,
+                text: line.trim(),
+              });
+            }
+          }
+
+          // Search in frontmatter (convert to string for searching)
+          const frontmatterStr = JSON.stringify(fm);
+          const searchFrontmatter = options.caseSensitive
+            ? frontmatterStr
+            : frontmatterStr.toLowerCase();
+
+          if (searchFrontmatter.includes(searchQuery)) {
+            // Add a special match for frontmatter
+            matches.push({
+              line: 0,
+              text: `[frontmatter] ${Object.entries(fm)
+                .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+                .join(", ")}`,
+            });
+          }
+
+          // If we found matches, add to results
+          if (matches.length > 0) {
+            results.push({
+              note: {
+                path: notePath.replace(/\.md$/, ""),
+                title: fm.title || basename(entry, ".md"),
+                tags: fm.tags || [],
+                created: fm.created,
+                modified: fm.modified,
+              },
+              matches,
+            });
+          }
+        } catch {
+          // Skip files that can't be parsed
+        }
+      }
+
+      // Check limit
+      if (options.limit && results.length >= options.limit) {
+        return;
+      }
+    }
+  }
+
+  scanDir(baseDir);
+
+  // Sort by number of matches (most matches first)
+  results.sort((a, b) => b.matches.length - a.matches.length);
+
+  if (options.limit) {
+    return results.slice(0, options.limit);
+  }
+
+  return results;
 }
