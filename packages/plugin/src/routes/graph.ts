@@ -289,10 +289,17 @@ export function registerGraphRoutes(server: PetraServer, app: App): void {
     const url = new URL(req.url || "/", "http://localhost");
     const depthParam = parseInt(url.searchParams.get("depth") || "1");
     const direction = (url.searchParams.get("direction") || "both") as "in" | "out" | "both";
+    const limitParam = parseInt(url.searchParams.get("limit") || "1000");
+    const timeoutParam = parseInt(url.searchParams.get("timeout") || "5000");
 
-    // Enforce depth limit for neighbors endpoint (currently unused but good to have)
+    // Enforce safety limits
     const MAX_NEIGHBOR_DEPTH = 10;
+    const MAX_NEIGHBOR_LIMIT = 5000;
+    const MAX_NEIGHBOR_TIMEOUT = 10000;
+
     const safeDepth = Math.min(Math.max(1, depthParam), MAX_NEIGHBOR_DEPTH);
+    const limit = Math.min(Math.max(1, limitParam), MAX_NEIGHBOR_LIMIT);
+    const timeout = Math.min(Math.max(1000, timeoutParam), MAX_NEIGHBOR_TIMEOUT);
 
     const files = app.vault.getMarkdownFiles();
     const fileMap = new Map<string, TFile>();
