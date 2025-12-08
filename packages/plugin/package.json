@@ -5,16 +5,18 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "bun build src/main.ts --outdir dist --target browser --external:obsidian",
-    "dev": "bun build src/main.ts --outdir dist --target browser --external:obsidian --watch",
+    "copy-assets": "cp manifest.json styles.css dist/ 2>/dev/null || true",
+    "build": "node build.js && npm run copy-assets",
+    "dev": "node build.js --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "echo \"No tests yet\""
   },
   "dependencies": {
     "@petra/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "esbuild": "^0.19.0",
     "obsidian": "^1.5.0",
     "typescript": "^5.3.0"
   }

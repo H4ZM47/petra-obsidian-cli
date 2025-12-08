@@ -1,0 +1,10 @@
+{
+  "id": "petra-bridge",
+  "name": "Petra Bridge",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "HTTP API bridge for Petra CLI - enables AI agents to interact with your vault",
+  "author": "Petra",
+  "authorUrl": "https://github.com/petra-cli/petra",
+  "isDesktopOnly": true
+}
