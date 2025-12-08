@@ -24,13 +24,23 @@ function getTemplatesFolder(app: App): string {
   return "Templates"; // Default
 }
 
+/** Escape special regex characters */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Simple template variable replacement */
 function processTemplate(content: string, variables: Record<string, string>): string {
   let processed = content;
 
   // Replace {{variable}} patterns
   for (const [key, value] of Object.entries(variables)) {
-    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "g");
+    // Validate key is alphanumeric with underscores only
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+      throw new Error(`Invalid variable name: ${key}`);
+    }
+    // Use escaped key in regex to prevent injection
+    const pattern = new RegExp(`\\{\\{\\s*${escapeRegex(key)}\\s*\\}\\}`, "g");
     processed = processed.replace(pattern, value);
   }
 

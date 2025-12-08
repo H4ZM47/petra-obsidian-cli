@@ -1,4 +1,4 @@
-import { Plugin, Notice } from "obsidian";
+import { Plugin, Notice, FileSystemAdapter } from "obsidian";
 import { VERSION } from "@petra/shared";
 import { PetraServer } from "./server";
 import { getOrCreateToken } from "./auth";
@@ -45,11 +45,14 @@ export default class PetraBridge extends Plugin {
     // GET /vault - Return current vault info
     this.server.route("GET", "/vault", async (_req, res, _params, _body) => {
       const vault = this.app.vault;
+      const adapter = vault.adapter;
+      const basePath = adapter instanceof FileSystemAdapter ? adapter.basePath : "";
+
       this.server!.sendJson(res, {
         ok: true,
         data: {
           name: vault.getName(),
-          path: (vault.adapter as any).basePath || "",
+          path: basePath,
         },
       });
     });

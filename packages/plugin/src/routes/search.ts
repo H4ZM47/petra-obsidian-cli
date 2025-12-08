@@ -30,16 +30,20 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, unknow
   return { frontmatter, body };
 }
 
+/** Default maximum file size to search (1MB) */
+const DEFAULT_MAX_FILE_SIZE = 1 * 1024 * 1024;
+
 /** Register search routes */
 export function registerSearchRoutes(server: PetraServer, app: App): void {
 
   // POST /search - Full-text search
   server.route("POST", "/search", async (_req, res, _params, body) => {
-    const { query, folder, limit = 20, caseSensitive = false } = body as {
+    const { query, folder, limit = 20, caseSensitive = false, maxFileSize = DEFAULT_MAX_FILE_SIZE } = body as {
       query: string;
       folder?: string;
       limit?: number;
       caseSensitive?: boolean;
+      maxFileSize?: number;
     };
 
     if (!query) {
@@ -54,6 +58,13 @@ export function registerSearchRoutes(server: PetraServer, app: App): void {
     for (const file of files) {
       if (folder && !file.path.startsWith(folder)) continue;
       if (results.length >= limit) break;
+
+      // Check file size before reading to prevent memory issues
+      const stat = await app.vault.adapter.stat(file.path);
+      if (stat && stat.size > maxFileSize) {
+        // Skip files that exceed the size limit
+        continue;
+      }
 
       const content = await app.vault.read(file);
       const { frontmatter, body } = parseFrontmatter(content);
