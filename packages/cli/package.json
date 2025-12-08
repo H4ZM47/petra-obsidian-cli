@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "petra": "./dist/index.js"
+    "petra": "./dist/index.cjs"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target node",
-    "dev": "bun run src/index.ts",
+    "build": "node build.js",
+    "dev": "node build.js --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "echo \"No tests yet\""
   },
   "dependencies": {
     "@petra/shared": "workspace:*",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "esbuild": "^0.19.0",
     "typescript": "^5.3.0"
   }
 }
