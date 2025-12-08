@@ -1,0 +1,21 @@
+{
+  "name": "petra-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "bun build src/main.ts --outdir dist --target browser --external:obsidian",
+    "dev": "bun build src/main.ts --outdir dist --target browser --external:obsidian --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@petra/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "obsidian": "^1.5.0",
+    "typescript": "^5.3.0"
+  }
+}
