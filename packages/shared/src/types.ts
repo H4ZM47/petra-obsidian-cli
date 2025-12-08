@@ -82,3 +82,19 @@ export interface GlobalOptions {
   quiet?: boolean;
   vault?: string;
 }
+
+/** A match found in search */
+export interface SearchMatch {
+  /** Line number (1-indexed) */
+  line: number;
+  /** The matched line text */
+  text: string;
+}
+
+/** Search result for a note */
+export interface SearchResult {
+  /** The note's metadata */
+  note: NoteInfo;
+  /** Array of matches found in the note */
+  matches: SearchMatch[];
+}
