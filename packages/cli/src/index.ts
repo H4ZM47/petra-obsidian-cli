@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { Command } from "commander";
 import { VERSION } from "@petra/shared";
 import { registerCommands } from "./commands/index.js";
