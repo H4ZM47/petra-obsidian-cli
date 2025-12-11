@@ -39,20 +39,18 @@ export class PetraSettingTab extends PluginSettingTab {
   }
 
   private validateTokenFormat(token: string): { valid: boolean; message: string } {
-    if (token.length < 40) {
-      return { valid: false, message: `Token too short (${token.length} chars, expected ~43)` };
+    // Accept any token with at least 20 characters for security
+    if (token.length < 20) {
+      return { valid: false, message: `Token too short (${token.length} chars, minimum 20)` };
     }
 
-    const base64urlRegex = /^[A-Za-z0-9_-]+$/;
-    if (!base64urlRegex.test(token)) {
-      return { valid: false, message: "Invalid characters (should be base64url)" };
+    // Allow alphanumeric plus base64url characters
+    const safeCharsRegex = /^[A-Za-z0-9_-]+$/;
+    if (!safeCharsRegex.test(token)) {
+      return { valid: false, message: "Invalid characters detected" };
     }
 
-    if (token.length !== 43) {
-      return { valid: false, message: `Length mismatch (${token.length} chars, expected 43)` };
-    }
-
-    return { valid: true, message: "Valid format" };
+    return { valid: true, message: `Valid (${token.length} characters)` };
   }
 
   private regenerateToken(): string {
@@ -143,7 +141,7 @@ export class PetraSettingTab extends PluginSettingTab {
       // Token info
       new Setting(containerEl)
         .setName("Token Information")
-        .setDesc(`Length: ${token.length} characters | Format: base64url (32 random bytes)`);
+        .setDesc(`Length: ${token.length} characters`);
     }
 
     // Token actions
@@ -175,7 +173,7 @@ export class PetraSettingTab extends PluginSettingTab {
       .setName("Set Token Manually")
       .setDesc("For advanced users: manually set a specific token value")
       .addText(text => text
-        .setPlaceholder("Enter token (43 characters)")
+        .setPlaceholder("Enter token (min 20 characters)")
         .onChange(value => {
           manualTokenValue = value;
         }))
@@ -205,20 +203,13 @@ export class PetraSettingTab extends PluginSettingTab {
         }));
 
     // Help section
-    containerEl.createEl("h3", { text: "Help" });
-
-    new Setting(containerEl)
-      .setName("CLI Commands")
-      .setDesc("You can also manage tokens using the Petra CLI")
-      .setClass("petra-help");
+    containerEl.createEl("h3", { text: "Usage" });
 
     const helpEl = containerEl.createDiv({ cls: "petra-help-content" });
-    helpEl.createEl("p", { text: "Available CLI commands:" });
+    helpEl.createEl("p", { text: "The token is used to authenticate API requests. Copy it and use in your CLI or automation tools:" });
     const codeBlock = helpEl.createEl("pre");
-    codeBlock.createEl("code", { text: `petra bridge status          # Check bridge and token
-petra bridge token show     # Display current token
-petra bridge token validate # Validate token format
-petra bridge token regenerate # Generate new token` });
+    codeBlock.createEl("code", { text: `# Example: Check vault info
+curl -H "Authorization: Bearer <token>" http://localhost:27182/vault` });
 
     // Add CSS
     const style = containerEl.createEl("style");
