@@ -5,6 +5,6 @@
   "scripts": {
     "build": "bun run --filter '*' build",
     "test": "bun run --filter '*' test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun run --filter '*' typecheck"
   }
 }
