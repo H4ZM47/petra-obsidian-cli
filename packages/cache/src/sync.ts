@@ -109,9 +109,15 @@ export function syncCache(
     }
 
     const { data: frontmatter, content } = parseFrontmatter(raw);
-    const title = (frontmatter.title as string) || file.path.replace(/\.md$/, "").split("/").pop() || "";
-    const created = frontmatter.created as string | undefined;
-    const modified = frontmatter.modified as string | undefined;
+    const title = String(frontmatter.title || file.path.replace(/\.md$/, "").split("/").pop() || "");
+
+    // Ensure created/modified are strings or null (handle Date objects)
+    const created = frontmatter.created
+      ? (frontmatter.created instanceof Date ? frontmatter.created.toISOString() : String(frontmatter.created))
+      : null;
+    const modified = frontmatter.modified
+      ? (frontmatter.modified instanceof Date ? frontmatter.modified.toISOString() : String(frontmatter.modified))
+      : null;
 
     // Insert/update file record
     insertFile.run(
