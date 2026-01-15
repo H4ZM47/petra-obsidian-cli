@@ -3,43 +3,12 @@
 import { App, TFile, TFolder } from "obsidian";
 import { PetraServer } from "../server";
 import type { Note, NoteInfo, NoteFrontmatter } from "@petra/shared";
-
-/** Parse YAML frontmatter from content */
-function parseFrontmatter(content: string): { frontmatter: NoteFrontmatter; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) {
-    return { frontmatter: {}, body: content };
-  }
-
-  const yamlStr = match[1];
-  const body = match[2];
-
-  // Simple YAML parsing for common fields
-  const frontmatter: NoteFrontmatter = {};
-  const lines = yamlStr.split("\n");
-
-  for (const line of lines) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-
-    const key = line.slice(0, colonIdx).trim();
-    let value = line.slice(colonIdx + 1).trim();
-
-    // Handle arrays like tags: [a, b, c] or tags:\n  - a
-    if (value.startsWith("[") && value.endsWith("]")) {
-      frontmatter[key] = value.slice(1, -1).split(",").map(s => s.trim());
-    } else if (value) {
-      frontmatter[key] = value;
-    }
-  }
-
-  return { frontmatter, body };
-}
+import { parseFrontmatter } from "@petra/shared";
 
 /** Convert TFile to NoteInfo */
 async function fileToNoteInfo(app: App, file: TFile): Promise<NoteInfo> {
   const content = await app.vault.read(file);
-  const { frontmatter } = parseFrontmatter(content);
+  const { data: frontmatter } = parseFrontmatter(content);
 
   return {
     path: file.path.replace(/\.md$/, ""),
@@ -53,13 +22,13 @@ async function fileToNoteInfo(app: App, file: TFile): Promise<NoteInfo> {
 /** Convert TFile to full Note */
 async function fileToNote(app: App, file: TFile): Promise<Note> {
   const raw = await app.vault.read(file);
-  const { frontmatter, body } = parseFrontmatter(raw);
+  const { data: frontmatter, content: body } = parseFrontmatter(raw);
 
   return {
     path: file.path.replace(/\.md$/, ""),
     title: frontmatter.title as string || file.basename,
     content: body,
-    frontmatter,
+    frontmatter: frontmatter as NoteFrontmatter,
     raw,
   };
 }
@@ -189,16 +158,16 @@ export function registerNoteRoutes(server: PetraServer, app: App): void {
     const parsed = parseFrontmatter(existing);
 
     // Update content
-    let newBody = parsed.body;
+    let newBody = parsed.content;
     if (content !== undefined) {
       newBody = content;
     } else if (append !== undefined) {
-      newBody = parsed.body + "\n" + append;
+      newBody = parsed.content + "\n" + append;
     }
 
     // Update frontmatter
     const newFm: NoteFrontmatter = {
-      ...parsed.frontmatter,
+      ...parsed.data,
       ...frontmatter,
       modified: new Date().toISOString(),
     };

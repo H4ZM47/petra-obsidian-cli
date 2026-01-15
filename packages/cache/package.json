@@ -1,5 +1,5 @@
 {
-  "name": "@petra/shared",
+  "name": "@petra/cache",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,6 +13,10 @@
     "test": "bun test"
   },
   "dependencies": {
-    "gray-matter": "^4.0.3"
+    "@petra/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
   }
 }

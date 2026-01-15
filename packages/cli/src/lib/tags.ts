@@ -5,6 +5,7 @@ import { join, basename } from "node:path";
 import matter from "gray-matter";
 import type { NoteFrontmatter, NoteInfo } from "@petra/shared";
 import { requireVault } from "./vault.js";
+import { getCache, syncCache } from "./cache.js";
 
 /** Tag information with note count */
 export interface TagInfo {
@@ -70,53 +71,18 @@ export function getTagsFromNote(
 }
 
 /**
- * Get all tags in the vault with their occurrence counts
+ * Get all tags in the vault with their occurrence counts (uses cache)
  */
 export function getAllTags(): Map<string, number> {
-  const vault = requireVault();
-  const tagCounts = new Map<string, number>();
+  // Sync cache to ensure it's up to date
+  syncCache();
 
-  function scanDir(dir: string): void {
-    if (!existsSync(dir)) {
-      return;
-    }
-
-    const entries = readdirSync(dir);
-
-    for (const entry of entries) {
-      // Skip hidden files and .obsidian folder
-      if (entry.startsWith(".")) continue;
-
-      const fullPath = join(dir, entry);
-      const stat = statSync(fullPath);
-
-      if (stat.isDirectory()) {
-        scanDir(fullPath);
-      } else if (entry.endsWith(".md")) {
-        try {
-          const raw = readFileSync(fullPath, "utf-8");
-          const { content, data } = matter(raw);
-          const fm = data as NoteFrontmatter;
-
-          const tags = getTagsFromNote(content, fm);
-
-          for (const tag of tags) {
-            tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
-          }
-        } catch {
-          // Skip files that can't be parsed
-        }
-      }
-    }
-  }
-
-  scanDir(vault.path);
-
-  return tagCounts;
+  const cache = getCache();
+  return cache.getAllTags();
 }
 
 /**
- * Find notes that contain a specific tag
+ * Find notes that contain a specific tag (uses cache)
  */
 export function findNotesByTag(
   tag: string,
@@ -125,78 +91,18 @@ export function findNotesByTag(
     limit?: number;
   } = {}
 ): NoteWithTags[] {
-  const vault = requireVault();
-  const notes: NoteWithTags[] = [];
-  const searchTag = tag.toLowerCase();
-  const exact = options.exact ?? false;
+  // Sync cache to ensure it's up to date
+  syncCache();
 
-  function scanDir(dir: string, relativePath: string = ""): void {
-    if (!existsSync(dir)) {
-      return;
-    }
-
-    const entries = readdirSync(dir);
-
-    for (const entry of entries) {
-      // Skip hidden files and .obsidian folder
-      if (entry.startsWith(".")) continue;
-
-      const fullPath = join(dir, entry);
-      const stat = statSync(fullPath);
-
-      if (stat.isDirectory()) {
-        scanDir(fullPath, join(relativePath, entry));
-      } else if (entry.endsWith(".md")) {
-        try {
-          const raw = readFileSync(fullPath, "utf-8");
-          const { content, data } = matter(raw);
-          const fm = data as NoteFrontmatter;
-
-          const allTags = getTagsFromNote(content, fm);
-
-          // Check if any tag matches
-          const hasMatch = allTags.some((t) => {
-            const normalized = t.toLowerCase();
-            return exact
-              ? normalized === searchTag
-              : normalized.includes(searchTag);
-          });
-
-          if (hasMatch) {
-            const notePath = join(relativePath, entry);
-            notes.push({
-              path: notePath.replace(/\.md$/, ""),
-              title: fm.title || basename(entry, ".md"),
-              tags: fm.tags || [],
-              allTags,
-              created: fm.created,
-              modified: fm.modified,
-            });
-          }
-        } catch {
-          // Skip files that can't be parsed
-        }
-      }
-
-      // Check limit
-      if (options.limit && notes.length >= options.limit) {
-        return;
-      }
-    }
-  }
-
-  scanDir(vault.path);
-
-  // Sort by modified date (most recent first)
-  notes.sort((a, b) => {
-    const aDate = a.modified || a.created || "";
-    const bDate = b.modified || b.created || "";
-    return bDate.localeCompare(aDate);
+  const cache = getCache();
+  const notes = cache.getNotesByTag(tag, {
+    exactMatch: options.exact ?? true,
+    limit: options.limit,
   });
 
-  if (options.limit) {
-    return notes.slice(0, options.limit);
-  }
-
-  return notes;
+  // Convert NoteInfo to NoteWithTags (allTags = tags from frontmatter for now)
+  return notes.map((note) => ({
+    ...note,
+    allTags: note.tags,
+  }));
 }

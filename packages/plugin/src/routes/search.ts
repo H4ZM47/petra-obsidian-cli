@@ -3,32 +3,7 @@
 import { App } from "obsidian";
 import { PetraServer } from "../server";
 import type { SearchResult, SearchMatch } from "@petra/shared";
-
-/** Parse frontmatter from content */
-function parseFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) {
-    return { frontmatter: {}, body: content };
-  }
-
-  const yamlStr = match[1];
-  const body = match[2];
-  const frontmatter: Record<string, unknown> = {};
-
-  for (const line of yamlStr.split("\n")) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = line.slice(0, colonIdx).trim();
-    let value = line.slice(colonIdx + 1).trim();
-    if (value.startsWith("[") && value.endsWith("]")) {
-      frontmatter[key] = value.slice(1, -1).split(",").map(s => s.trim());
-    } else if (value) {
-      frontmatter[key] = value;
-    }
-  }
-
-  return { frontmatter, body };
-}
+import { parseFrontmatter } from "@petra/shared";
 
 /** Register search routes */
 export function registerSearchRoutes(server: PetraServer, app: App): void {
@@ -56,7 +31,7 @@ export function registerSearchRoutes(server: PetraServer, app: App): void {
       if (results.length >= limit) break;
 
       const content = await app.vault.read(file);
-      const { frontmatter, body } = parseFrontmatter(content);
+      const { data: frontmatter, content: body } = parseFrontmatter(content);
 
       const matches: SearchMatch[] = [];
 

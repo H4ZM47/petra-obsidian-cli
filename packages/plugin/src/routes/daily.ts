@@ -3,6 +3,7 @@
 import { App, TFile } from "obsidian";
 import { PetraServer } from "../server";
 import type { Note, NoteInfo, NoteFrontmatter } from "@petra/shared";
+import { parseFrontmatter } from "@petra/shared";
 
 interface DailyConfig {
   format: string;
@@ -68,40 +69,16 @@ function parseDate(dateStr: string): Date | null {
   return null;
 }
 
-/** Parse frontmatter */
-function parseFrontmatter(content: string): { frontmatter: NoteFrontmatter; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) return { frontmatter: {}, body: content };
-
-  const yamlStr = match[1];
-  const body = match[2];
-  const frontmatter: NoteFrontmatter = {};
-
-  for (const line of yamlStr.split("\n")) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = line.slice(0, colonIdx).trim();
-    let value = line.slice(colonIdx + 1).trim();
-    if (value.startsWith("[") && value.endsWith("]")) {
-      frontmatter[key] = value.slice(1, -1).split(",").map(s => s.trim());
-    } else if (value) {
-      frontmatter[key] = value;
-    }
-  }
-
-  return { frontmatter, body };
-}
-
 /** Convert file to Note */
 async function fileToNote(app: App, file: TFile): Promise<Note> {
   const raw = await app.vault.read(file);
-  const { frontmatter, body } = parseFrontmatter(raw);
+  const { data: frontmatter, content: body } = parseFrontmatter(raw);
 
   return {
     path: file.path.replace(/\.md$/, ""),
     title: (frontmatter.title as string) || file.basename,
     content: body,
-    frontmatter,
+    frontmatter: frontmatter as NoteFrontmatter,
     raw,
   };
 }
@@ -202,7 +179,7 @@ export function registerDailyRoutes(server: PetraServer, app: App): void {
     const notes: NoteInfo[] = [];
     for (const { file } of dailyNotes.slice(0, limit)) {
       const content = await app.vault.read(file);
-      const { frontmatter } = parseFrontmatter(content);
+      const { data: frontmatter } = parseFrontmatter(content);
 
       notes.push({
         path: file.path.replace(/\.md$/, ""),

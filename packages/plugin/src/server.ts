@@ -6,6 +6,10 @@ import type { ApiResponse, ApiError } from "@petra/shared";
 
 // Node's http is available in Obsidian desktop
 import * as http from "http";
+import { timingSafeEqual } from "crypto";
+
+/** Maximum request body size (10MB) */
+const MAX_BODY_SIZE = 10 * 1024 * 1024;
 
 export type RouteHandler = (
   req: http.IncomingMessage,
@@ -126,7 +130,16 @@ export class PetraServer {
       });
 
       // Parse body for POST/PUT
-      const body = await this.parseBody(req);
+      let body: unknown;
+      try {
+        body = await this.parseBody(req);
+      } catch (err) {
+        if (err instanceof Error && err.message === "Request body too large") {
+          this.sendError(res, 413, "INTERNAL_ERROR", "Request body too large");
+          return;
+        }
+        throw err;
+      }
 
       await route.handler(req, res, params, body);
       return;
@@ -143,13 +156,34 @@ export class PetraServer {
     if (!authHeader) return false;
 
     const [type, token] = authHeader.split(" ");
-    return type === "Bearer" && token === this.authToken;
+    if (type !== "Bearer" || !token) return false;
+
+    // Use timing-safe comparison to prevent timing attacks
+    try {
+      const provided = Buffer.from(token, "utf-8");
+      const expected = Buffer.from(this.authToken, "utf-8");
+      if (provided.length !== expected.length) return false;
+      return timingSafeEqual(provided, expected);
+    } catch {
+      return false;
+    }
   }
 
   private async parseBody(req: http.IncomingMessage): Promise<unknown> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
-      req.on("data", (chunk) => chunks.push(chunk));
+      let totalSize = 0;
+
+      req.on("data", (chunk: Buffer) => {
+        totalSize += chunk.length;
+        if (totalSize > MAX_BODY_SIZE) {
+          req.destroy();
+          reject(new Error("Request body too large"));
+          return;
+        }
+        chunks.push(chunk);
+      });
+
       req.on("end", () => {
         const body = Buffer.concat(chunks).toString();
         if (!body) {
@@ -162,6 +196,8 @@ export class PetraServer {
           resolve(body);
         }
       });
+
+      req.on("error", reject);
     });
   }
 

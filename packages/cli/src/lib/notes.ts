@@ -7,6 +7,7 @@ import type { Note, NoteInfo, NoteFrontmatter, SearchResult, SearchMatch } from 
 import { notFound, alreadyExists, invalidPath } from "@petra/shared";
 import { TRASH_FOLDER } from "@petra/shared";
 import { requireVault } from "./vault.js";
+import { getCache, syncCache } from "./cache.js";
 
 /** Maximum directory depth to prevent stack overflow */
 const MAX_SCAN_DEPTH = 20;
@@ -190,92 +191,16 @@ export function deleteNote(notePath: string, useTrash: boolean = false): void {
   }
 }
 
-/** List notes in vault */
+/** List notes in vault (uses cache for performance) */
 export function listNotes(options: {
   folder?: string;
   limit?: number;
 } = {}): NoteInfo[] {
-  const vault = requireVault();
-  const baseDir = options.folder
-    ? safePath(options.folder, vault.path)
-    : vault.path;
+  // Sync cache to ensure it's up to date
+  syncCache();
 
-  if (!existsSync(baseDir)) {
-    return [];
-  }
-
-  const notes: NoteInfo[] = [];
-
-  function scanDir(dir: string, relativePath: string = "", depth: number = 0): void {
-    // Stop recursion if max depth reached
-    if (depth > MAX_SCAN_DEPTH) {
-      return;
-    }
-
-    const entries = readdirSync(dir);
-
-    for (const entry of entries) {
-      // Skip hidden files and .obsidian folder
-      if (entry.startsWith(".")) continue;
-
-      const fullPath = join(dir, entry);
-
-      // Use lstat to detect symlinks without following them
-      let stat;
-      try {
-        stat = lstatSync(fullPath);
-      } catch {
-        // Skip files we can't stat
-        continue;
-      }
-
-      // Skip symlinks to prevent infinite loops
-      if (stat.isSymbolicLink()) {
-        continue;
-      }
-
-      if (stat.isDirectory()) {
-        scanDir(fullPath, join(relativePath, entry), depth + 1);
-      } else if (entry.endsWith(".md")) {
-        const notePath = join(relativePath, entry);
-        try {
-          const raw = readFileSync(fullPath, "utf-8");
-          const { data } = matter(raw);
-          const fm = data as NoteFrontmatter;
-
-          notes.push({
-            path: notePath.replace(/\.md$/, ""),
-            title: fm.title || basename(entry, ".md"),
-            tags: fm.tags || [],
-            created: fm.created,
-            modified: fm.modified,
-          });
-        } catch {
-          // Skip files that can't be parsed
-        }
-      }
-
-      // Check limit
-      if (options.limit && notes.length >= options.limit) {
-        return;
-      }
-    }
-  }
-
-  scanDir(baseDir);
-
-  // Sort by modified date (most recent first)
-  notes.sort((a, b) => {
-    const aDate = String(a.modified || a.created || "");
-    const bDate = String(b.modified || b.created || "");
-    return bDate.localeCompare(aDate);
-  });
-
-  if (options.limit) {
-    return notes.slice(0, options.limit);
-  }
-
-  return notes;
+  const cache = getCache();
+  return cache.listNotes(options);
 }
 
 /** Move/rename a note */
@@ -306,7 +231,7 @@ export function moveNote(fromPath: string, toPath: string, force: boolean = fals
   return readNote(toPath);
 }
 
-/** Search notes in vault */
+/** Search notes in vault (uses cache FTS for performance) */
 export function searchNotes(
   query: string,
   options: {
@@ -315,120 +240,12 @@ export function searchNotes(
     caseSensitive?: boolean;
   } = {}
 ): SearchResult[] {
-  const vault = requireVault();
-  const baseDir = options.folder
-    ? safePath(options.folder, vault.path)
-    : vault.path;
+  // Sync cache to ensure it's up to date
+  syncCache();
 
-  if (!existsSync(baseDir)) {
-    return [];
-  }
-
-  const results: SearchResult[] = [];
-  const searchQuery = options.caseSensitive ? query : query.toLowerCase();
-
-  function scanDir(dir: string, relativePath: string = "", depth: number = 0): void {
-    // Stop recursion if max depth reached
-    if (depth > MAX_SCAN_DEPTH) {
-      return;
-    }
-
-    const entries = readdirSync(dir);
-
-    for (const entry of entries) {
-      // Skip hidden files and .obsidian folder
-      if (entry.startsWith(".")) continue;
-
-      const fullPath = join(dir, entry);
-
-      // Use lstat to detect symlinks without following them
-      let stat;
-      try {
-        stat = lstatSync(fullPath);
-      } catch {
-        // Skip files we can't stat
-        continue;
-      }
-
-      // Skip symlinks to prevent infinite loops
-      if (stat.isSymbolicLink()) {
-        continue;
-      }
-
-      if (stat.isDirectory()) {
-        scanDir(fullPath, join(relativePath, entry), depth + 1);
-      } else if (entry.endsWith(".md")) {
-        const notePath = join(relativePath, entry);
-        try {
-          const raw = readFileSync(fullPath, "utf-8");
-          const { content, data } = matter(raw);
-          const fm = data as NoteFrontmatter;
-
-          const matches: SearchMatch[] = [];
-
-          // Search in content
-          const contentLines = content.split("\n");
-          for (let i = 0; i < contentLines.length; i++) {
-            const line = contentLines[i];
-            const searchLine = options.caseSensitive ? line : line.toLowerCase();
-
-            if (searchLine.includes(searchQuery)) {
-              matches.push({
-                line: i + 1,
-                text: line.trim(),
-              });
-            }
-          }
-
-          // Search in frontmatter (convert to string for searching)
-          const frontmatterStr = JSON.stringify(fm);
-          const searchFrontmatter = options.caseSensitive
-            ? frontmatterStr
-            : frontmatterStr.toLowerCase();
-
-          if (searchFrontmatter.includes(searchQuery)) {
-            // Add a special match for frontmatter
-            matches.push({
-              line: 0,
-              text: `[frontmatter] ${Object.entries(fm)
-                .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-                .join(", ")}`,
-            });
-          }
-
-          // If we found matches, add to results
-          if (matches.length > 0) {
-            results.push({
-              note: {
-                path: notePath.replace(/\.md$/, ""),
-                title: fm.title || basename(entry, ".md"),
-                tags: fm.tags || [],
-                created: fm.created,
-                modified: fm.modified,
-              },
-              matches,
-            });
-          }
-        } catch {
-          // Skip files that can't be parsed
-        }
-      }
-
-      // Check limit
-      if (options.limit && results.length >= options.limit) {
-        return;
-      }
-    }
-  }
-
-  scanDir(baseDir);
-
-  // Sort by number of matches (most matches first)
-  results.sort((a, b) => b.matches.length - a.matches.length);
-
-  if (options.limit) {
-    return results.slice(0, options.limit);
-  }
-
-  return results;
+  const cache = getCache();
+  return cache.searchContent(query, {
+    folder: options.folder,
+    limit: options.limit,
+  });
 }
